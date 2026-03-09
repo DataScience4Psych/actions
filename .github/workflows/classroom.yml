@@ -1,0 +1,363 @@
+name: Grade Submission
+# This workflow runs in submission repos (e.g. DataScience4Psych/2026-lab_02),
+# which are created from this template (DataScience4Psych/template_lab).
+#
+# When a student opens an issue here with a link to their work repo, this
+# workflow clones their code, runs the matching testthat suite, and posts
+# results back as a comment on the issue.
+#
+# Required secret: GRADING_PAT — a PAT with read access to student repos
+# (only needed if student repos are private).
+#
+# ── Reusable workflow ────────────────────────────────────────────────────────
+# Other submission repos can call this workflow instead of copying it:
+#
+#   jobs:
+#     grade:
+#       uses: DataScience4Psych/template_lab/.github/workflows/classroom.yml@main
+#       secrets: inherit
+#
+# That single call replaces the entire workflow body and automatically picks
+# up any future changes made here.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  workflow_call:
+    secrets:
+      GRADING_PAT:
+        required: false
+  workflow_dispatch:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    # On issue open: always run (except bots).
+    # On comment: only run if the comment body is exactly /grade or /regrade.
+    # On workflow_call: always run (caller decides when to invoke).
+    if: |
+      github.actor != 'github-classroom[bot]' && (
+        github.event_name == 'workflow_call' ||
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'issues' ||
+        (github.event_name == 'issue_comment' && (
+          github.event.comment.body == '/grade' ||
+          github.event.comment.body == '/regrade'
+        ))
+      )
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+    - name: Acknowledge submission
+      run: |
+        gh issue comment ${{ github.event.issue.number }} \
+          --body ":hourglass_flowing_sand: Grading request received from **${{ github.actor }}** — running now. Results will appear below when complete." \
+          --repo ${{ github.repository }}
+
+    # Extract the student's GitHub repo URL from the issue body.
+    # On /grade rerun, the URL is in the original issue body (not the comment).
+    # Fallback: if no URL is provided, try {issue-author}/{this-repo-name}.
+    - name: Extract student repo URL
+      id: extract
+      env:
+        ISSUE_BODY: ${{ github.event.issue.body }}
+      run: |
+        repo_url=$(echo "$ISSUE_BODY" \
+          | grep -oP 'https?://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+' \
+          | head -1 \
+          | sed 's|\.git$||')
+        if [ -n "$repo_url" ]; then
+          repo_path=$(echo "$repo_url" | sed 's|https://github.com/||')
+        else
+          author="${{ github.event.issue.user.login }}"
+          repo_path="${author}/${{ github.event.repository.name }}"
+          gh issue comment ${{ github.event.issue.number }} \
+            --body ":mag: No repo URL found in your submission — trying \`${repo_path}\`." \
+            --repo ${{ github.repository }}
+        fi
+        echo "repo_path=$repo_path" >> $GITHUB_OUTPUT
+        echo "Student repo: $repo_path"
+
+    # Detect which lab to grade.
+    # Primary:  student's repo name, e.g. "lab-02-plastic-waste" -> "lab02"
+    # Fallback: submission repo name, e.g. "2026-lab_02"          -> "lab02"
+    - name: Detect lab
+      id: detect-lab
+      run: |
+        normalize_lab() {
+          raw="$1"
+          num=$(echo "$raw" | grep -oP '\d+' | head -1)
+          if [ -n "$num" ]; then
+            printf 'lab%02d\n' "$((10#$num))"
+          fi
+        }
+        student_repo=$(echo "${{ steps.extract.outputs.repo_path }}" | cut -d/ -f2)
+        # Accept forms like:
+        #   lab1, lab01, lab-1, lab_1, labs1, labs-01, etc.
+        raw_lab=$(echo "$student_repo" | grep -oiP 'labs?[_-]?\d+' | head -1)
+
+        if [ -n "$raw_lab" ]; then
+          lab=$(normalize_lab "$raw_lab")
+        fi
+        
+        if [ -z "$lab" ]; then
+          # Fallback: use the submission repo name
+          submission_repo="${{ github.event.repository.name }}"
+          lab=$(echo "$submission_repo" | grep -oiP 'lab[_]?\d+' | head -1 | tr -d '_' | tr '[:upper:]' '[:lower:]')
+          if [ -z "$lab" ]; then
+            num=$(echo "$submission_repo" | grep -oP '\d+' | tail -1)
+            if [ -n "$num" ]; then
+              lab="lab$(printf '%02d' "$((10#$num))")"
+            fi
+          fi
+          if [ -z "$lab" ]; then
+            gh issue comment ${{ github.event.issue.number }} \
+              --body ":x: Could not detect a lab number from your repo name or the submission repo name. Please include your repo URL in the issue body." \
+              --repo ${{ github.repository }}
+            exit 1
+          fi
+          echo "::warning::Lab inferred from submission repo '$submission_repo': $lab"
+        fi
+        echo "lab=$lab" >> $GITHUB_OUTPUT
+        echo "Detected lab: $lab"
+
+    - name: Checkout student code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.extract.outputs.repo_path }}
+        token: ${{ secrets.GRADING_PAT || github.token }}
+        path: student-code
+
+    # Tests live in DataScience4Psych/DataScience4Psych at tests/<lab>/testthat/
+    - name: Checkout autograding tests
+      uses: actions/checkout@v4
+      with:
+        repository: DataScience4Psych/DataScience4Psych
+        path: autograding
+
+    - name: Verify lab test directory exists
+      run: |
+        test_path="$GITHUB_WORKSPACE/autograding/tests/${{ steps.detect-lab.outputs.lab }}/testthat"
+        if [ ! -d "$test_path" ]; then
+          gh issue comment ${{ github.event.issue.number }} \
+            --body ":x: No autograding tests found for \`${{ steps.detect-lab.outputs.lab }}\`. Please contact your instructor @smasongarrison." \
+            --repo ${{ github.repository }}
+          echo "::error::No tests found at $test_path"
+          exit 1
+        fi
+        n=$(find "$test_path" -name 'test-*.R' | wc -l)
+        echo "Found $n test file(s) in $test_path"
+
+    - name: Set up R
+      uses: r-lib/actions/setup-r@v2
+      with:
+        use-public-rspm: true
+
+    - name: Install R dependencies
+      uses: r-lib/actions/setup-r-dependencies@v2
+      with:
+        packages: |
+          any::testthat
+          any::tidyverse
+          any::datasauRus
+          any::stringr
+          any::knitr
+          any::pak
+
+    # Scan the student's Rmd for library()/require() calls and install any
+    # packages not already available, so labs with different dependencies work.
+    - name: Install student package dependencies
+      working-directory: student-code
+      run: |
+        Rscript --vanilla -e "
+          rmd <- list.files('.', pattern = '\\\\.Rmd$', ignore.case = TRUE,
+                            recursive = FALSE, full.names = TRUE)
+          rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
+          if (length(rmd) == 0) quit(status = 0)
+          txt <- readLines(rmd[1], warn = FALSE)
+          pkgs <- regmatches(txt, gregexpr('(?<=library\\\\(|require\\\\()([A-Za-z0-9_.]+)', txt, perl = TRUE))
+          pkgs <- unique(unlist(pkgs))
+          pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+          if('dsbox' %in% pkgs){
+          pkgs[pkgs == 'dsbox'] <- 'tidyverse/dsbox'
+          }
+          if('emo' %in% pkgs){
+           pkgs[pkgs == 'emo'] <- 'hadley/emo'
+          }
+          if (length(pkgs) > 0) {
+            message('Installing missing packages: ', paste(pkgs, collapse = ', '))
+            pak::pak(pkgs)
+          } else {
+            message('All student packages already installed.')
+          }
+        "
+
+    # Try to source the student's Rmd and warn if it fails.
+    # Does NOT stop grading — formative feedback should show as many
+    # test results as possible even when code has errors.
+    - name: Check student code runs
+      id: check-code
+      working-directory: student-code
+      run: |
+        Rscript --vanilla -e "
+          rmd <- list.files('.', pattern = '\\\\.Rmd$', ignore.case = TRUE,
+                            recursive = FALSE, full.names = TRUE)
+        #  rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
+          if (length(rmd) == 0) stop('No student .Rmd file found')
+          r_script <- tempfile(fileext = '.R')
+          knitr::purl(rmd[1], output = r_script, quiet = TRUE)
+          err <- tryCatch({ source(r_script, local = FALSE); NULL }, error = function(e) e)
+          if (!is.null(err)) {
+            writeLines(conditionMessage(err), '/tmp/code_error.txt')
+            stop(conditionMessage(err))
+          }
+        " 2>/tmp/code_error_full.txt || echo "CODE_FAILED=true" >> $GITHUB_ENV
+
+    - name: Warn about code errors
+      if: env.CODE_FAILED == 'true'
+      run: |
+        err=$(cat /tmp/code_error.txt 2>/dev/null || cat /tmp/code_error_full.txt | tail -5)
+        gh issue comment ${{ github.event.issue.number }} \
+          --body ":exploding_head: **Your code had errors when sourced** — some tests below may fail as a result. Fix these before resubmitting:\`\`\`${err}\`\`\`Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for full details." \
+          --repo ${{ github.repository }}
+
+    # Run tests with student code as working directory so relative file paths
+    # inside test files resolve correctly.
+    # Student Rmd is purled+sourced into .GlobalEnv first so all objects the
+    # tests reference (variables, functions, plots) are available.
+    # Proportional score = passing_expectations / total * 100.
+    - name: Run autograding tests
+      id: run-tests
+      working-directory: student-code
+      env:
+        STUDENT_CODE_DIR: ${{ github.workspace }}/student-code
+      run: |
+        lab="${{ steps.detect-lab.outputs.lab }}"
+        test_path="$GITHUB_WORKSPACE/autograding/tests/${lab}/testthat"
+
+        Rscript --vanilla -e "
+          # Source student Rmd into .GlobalEnv so test assertions can see objects.
+          # Use STUDENT_CODE_DIR so this works regardless of testthat's cwd.
+          student_dir <- Sys.getenv('STUDENT_CODE_DIR', unset = '.')
+          rmd <- list.files(student_dir, pattern = '\\\\.Rmd$', ignore.case = TRUE,
+                            recursive = FALSE, full.names = TRUE)
+          rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
+          if (length(rmd) > 0) {
+            r_script <- tempfile(fileext = '.R')
+            knitr::purl(rmd[1], output = r_script, quiet = TRUE)
+            tryCatch(
+              source(r_script, local = FALSE),
+              error = function(e) message('Student code error (grading continues): ', conditionMessage(e))
+            )
+          } else {
+            message('No student Rmd found; tests will run without student environment.')
+          }
+          source(file.path('${test_path}', '..', '..', 'shared-helper-load.R'), local = FALSE)
+          tap_lines <- capture.output(
+            result <- testthat::test_dir('${test_path}', reporter = 'tap',
+                                         stop_on_failure = FALSE),
+            type = 'output'
+          )
+
+          df      <- as.data.frame(result)
+          passing <- sum(df\$passed)
+          total   <- passing + sum(df\$failed) + sum(df\$error)
+          score   <- if (total > 0L) as.integer(round(passing / total * 100)) else 0L
+          status  <- if (passing == total && total > 0L) 'pass' else 'fail'
+
+          rows <- character(0)
+          i <- 1L
+          while (i <= length(tap_lines)) {
+            line <- tap_lines[i]
+            if (grepl('^ok ', line)) {
+              desc <- sub('^ok [0-9]+ - ', '', line)
+              rows <- c(rows, paste0('| \U2705 | ', desc, ' | |'))
+              i <- i + 1L
+            } else if (grepl('^not ok ', line)) {
+              desc <- sub('^not ok [0-9]+ - ', '', line)
+              msg_lines <- character(0)
+              i <- i + 1L
+              if (i <= length(tap_lines) && trimws(tap_lines[i]) == '---') {
+                i <- i + 1L
+                while (i <= length(tap_lines) && trimws(tap_lines[i]) != '...') {
+                  msg_lines <- c(msg_lines, trimws(tap_lines[i]))
+                  i <- i + 1L
+                }
+                i <- i + 1L
+              }
+              msg_idx <- grep('^message:', msg_lines)
+              detail <- if (length(msg_idx) > 0) {
+                raw <- sub('^message:[[:space:]]*', '', msg_lines[msg_idx[1]])
+                j <- msg_idx[1] + 1L
+                while (j <= length(msg_lines) && grepl('^  ', msg_lines[j])) {
+                  raw <- paste0(raw, ' ', trimws(msg_lines[j]))
+                  j <- j + 1L
+                }
+                raw
+              } else ''
+              rows <- c(rows, paste0('| \U274C | ', desc, ' | ', detail, ' |'))
+            } else {
+              i <- i + 1L
+            }
+          }
+
+          header <- if (score == 100) {
+            paste0('> \U1F389 All expectations passing!')
+          } else {
+            paste0('> ', passing, ' of ', total,
+                   ' expectations passing \u2014 ', score, '/100')
+          }
+
+          md <- c(
+            paste0('## ', toupper('${lab}'), ' autograding results'),
+            '',
+            header,
+            '',
+            '| | Expectation | Failure message |',
+            '|---|-------------|-----------------|',
+            rows
+          )
+          writeLines(md, '/tmp/summary.md')
+
+          writeLines(
+            c(paste0('SCORE=',   score),
+              paste0('PASSING=', passing),
+              paste0('TOTAL=',   total),
+              paste0('STATUS=',  status)),
+            '/tmp/test_metrics.txt'
+          )
+        " || true
+
+        if [ ! -f /tmp/test_metrics.txt ]; then
+          echo "::error::Tests failed to run (R error before metrics were written)"
+        fi
+
+    - name: Post grading results
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+          let body;
+          if (fs.existsSync('/tmp/summary.md')) {
+            body = fs.readFileSync('/tmp/summary.md', 'utf8').trim();
+            body += `\n\n[View full workflow run](${runUrl})`;
+          } else {
+            body = `:x: Grading failed to run — check the [workflow logs](${runUrl}) for R errors.`;
+          }
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: body
+          });
