@@ -14,7 +14,7 @@ name: Grade Submission
 #
 #   jobs:
 #     grade:
-#       uses: DataScience4Psych/template_lab/.github/workflows/classroom.yml@main
+#       uses: DataScience4Psych/actions/.github/workflows/classroom.yml@main
 #       secrets: inherit
 #
 # That single call replaces the entire workflow body and automatically picks
