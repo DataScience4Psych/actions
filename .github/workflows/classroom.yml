@@ -1,6 +1,6 @@
 name: Grade Submission
 # This workflow runs in submission repos (e.g. DataScience4Psych/2026-lab_02),
-# which are created from this template (DataScience4Psych/template_lab).
+# which are created from this template (DataScience4Psych/actions).
 #
 # When a student opens an issue here with a link to their work repo, this
 # workflow clones their code, runs the matching testthat suite, and posts
@@ -47,8 +47,8 @@ jobs:
         github.event_name == 'workflow_dispatch' ||
         github.event_name == 'issues' ||
         (github.event_name == 'issue_comment' && (
-          github.event.comment.body == '/grade' ||
-          github.event.comment.body == '/regrade'
+          startsWith(github.event.comment.body, '/grade') ||
+          startsWith(github.event.comment.body, '/regrade')
         ))
       )
     env:
