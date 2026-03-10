@@ -261,8 +261,11 @@ jobs:
           }
           source(file.path('${test_path}', '..', '..', 'shared-helper-load.R'), local = FALSE)
           tap_lines <- capture.output(
-            result <- testthat::test_dir('${test_path}', reporter = 'tap',
-                                         stop_on_failure = FALSE),
+            result <- c(
+            testthat::test_file(file.path('${test_path}', '..', '..', 'test-universal-rmd-code.R'), reporter = 'tap',
+                                         stop_on_failure = FALSE,
+            testthat::test_dir('${test_path}', reporter = 'tap',
+                                         stop_on_failure = FALSE)),
             type = 'output'
           )
 
