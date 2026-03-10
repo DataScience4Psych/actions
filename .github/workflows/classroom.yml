@@ -290,8 +290,7 @@ jobs:
             if (grepl('^ok ', line)) {
               desc <- sub('^ok [0-9]+ - ', '', line)
               if(grepl('[[:space:]]*#[[:space:]]*SKIP', desc, ignore.case = TRUE)) {
-              clean_desc <- sub('[[:space:]]*#[[:space:]]*SKIP.*$', '', desc, ignore.case = TRUE)
-              rows <- c(rows, paste0('| ',skip_symbol,' | ', clean_desc, ' | |'))
+              rows <- c(rows, paste0('| ',skip_symbol,' | ', desc, ' | |'))
               }else{
               rows <- c(rows, paste0('| ',success_symbol,' | ', desc, ' | |'))
               }
