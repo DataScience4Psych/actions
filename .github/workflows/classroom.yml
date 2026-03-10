@@ -281,7 +281,7 @@ jobs:
 
           skip_symbol <- sample(c('\u2205','\u2754'),1)
           success_symbol <- sample(c('\u2705','\u2754','\u2714'),1)
-          unsuccess_symbol <- sample(c('\u274C,'\u2573'),1)
+          unsuccess_symbol <- sample(c('\u274C','\u2573'),1)
           
           rows <- character(0)
           i <- 1L
