@@ -280,9 +280,9 @@ jobs:
 
           tap_lines <- c(tap_lines_universal, tap_lines_lab)
 
-          skip_symbol <- sample(c('\02205','\02754'),1)
-          success_symbol <- sample(c('\U2705','\02754'),1)
-          unsuccess_symbol <- sample(c('\U274C,'\02573'),1)
+          skip_symbol <- sample(c('\u2205','\u2754'),1)
+          success_symbol <- sample(c('\u2705','\u2754'),1)
+          unsuccess_symbol <- sample(c('\u274C,'\u2573'),1)
           
           rows <- character(0)
           i <- 1L
