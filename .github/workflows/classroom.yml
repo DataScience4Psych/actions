@@ -166,7 +166,6 @@ jobs:
         packages: |
           any::testthat
           any::tidyverse
-          any::datasauRus
           any::stringr
           any::knitr
           any::pak
