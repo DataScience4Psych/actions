@@ -281,7 +281,7 @@ jobs:
           tap_lines <- c(tap_lines_universal, tap_lines_lab)
 
           skip_symbol <- sample(c('\u2205','\u2754'),1)
-          success_symbol <- sample(c('\u2705','\u2754'),1)
+          success_symbol <- sample(c('\u2705','\u2754','\u2714'),1)
           unsuccess_symbol <- sample(c('\u274C,'\u2573'),1)
           
           rows <- character(0)
@@ -290,7 +290,7 @@ jobs:
             line <- tap_lines[i]
             if (grepl('^ok ', line)) {
               desc <- sub('^ok [0-9]+ - ', '', line)
-              if(grepl('# SKIP ', line)) {
+              if(grepl('\# SKIP ', line)) {
               rows <- c(rows, paste0('| ',skip_symbol,' | ', desc, ' | |'))
               }else{
               rows <- c(rows, paste0('| ',success_symbol,' | ', desc, ' | |'))
