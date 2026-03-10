@@ -58,7 +58,7 @@ jobs:
     - name: Acknowledge submission
       run: |
         gh issue comment ${{ github.event.issue.number }} \
-          --body ":hourglass_flowing_sand: Grading request received from **${{ github.actor }}** — running now. Results will appear below when complete." \
+          --body ":hourglass_flowing_sand: Grading request received from **${{ github.actor }}** — [running now](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}). Results will appear below when complete." \
           --repo ${{ github.repository }}
     # Extract the student's GitHub repo URL from the issue body.
     # On /grade rerun, the URL is in the original issue body (not the comment).
@@ -289,7 +289,7 @@ jobs:
             line <- tap_lines[i]
             if (grepl('^ok ', line)) {
               desc <- sub('^ok [0-9]+ - ', '', line)
-              if(grepl('\\# SKIP ', line)) {
+              if(grepl('[[:space:]]*#[[:space:]]*SKIP', line)) {
               rows <- c(rows, paste0('| ',skip_symbol,' | ', desc, ' | |'))
               }else{
               rows <- c(rows, paste0('| ',success_symbol,' | ', desc, ' | |'))
