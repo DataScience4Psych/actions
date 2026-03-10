@@ -280,6 +280,9 @@ jobs:
 
           tap_lines <- c(tap_lines_universal, tap_lines_lab)
 
+          skip_symbol <- sample(c('\02205','\02754'),1)
+          success_symbol <- sample(c('\U2705','\02754'),1)
+          unsuccess_symbol <- sample(c('\U274C,'\02573'),1)
           
           rows <- character(0)
           i <- 1L
@@ -287,7 +290,11 @@ jobs:
             line <- tap_lines[i]
             if (grepl('^ok ', line)) {
               desc <- sub('^ok [0-9]+ - ', '', line)
-              rows <- c(rows, paste0('| \U2705 | ', desc, ' | |'))
+              if(grepl('# SKIP ', line)) {
+              rows <- c(rows, paste0('| ',skip_symbol,' | ', desc, ' | |'))
+              }else{
+              rows <- c(rows, paste0('| ',success_symbol,' | ', desc, ' | |'))
+              }
               i <- i + 1L
             } else if (grepl('^not ok ', line)) {
               desc <- sub('^not ok [0-9]+ - ', '', line)
@@ -311,7 +318,7 @@ jobs:
                 }
                 raw
               } else ''
-              rows <- c(rows, paste0('| \U274C | ', desc, ' | ', detail, ' |'))
+              rows <- c(rows, paste0('| ',unsuccess_symbol,' | ', desc, ' | ', detail, ' |'))
             } else {
               i <- i + 1L
             }
