@@ -58,7 +58,7 @@ jobs:
     - name: Acknowledge submission
       run: |
         gh issue comment ${{ github.event.issue.number }} \
-          --body ":hourglass_flowing_sand: Grading request received from **${{ github.actor }}** — running now. [View full workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) Results will appear below when complete." \
+          --body ":hourglass_flowing_sand: Grading request received from **${{ github.actor }}** — running now. Results will appear below when complete." \
           --repo ${{ github.repository }}
     # Extract the student's GitHub repo URL from the issue body.
     # On /grade rerun, the URL is in the original issue body (not the comment).
