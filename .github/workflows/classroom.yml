@@ -273,13 +273,13 @@ jobs:
             type = 'output'
           )
 
-          df      <- as.data.frame(rbind(result_universal,result_lab))
+          df      <- rbind(as.data.frame(result_universal), as.data.frame(result_lab))
           passing <- sum(df\$passed)
           total   <- passing + sum(df\$failed) + sum(df\$error)
           score   <- if (total > 0L) as.integer(round(passing / total * 100)) else 0L
           status  <- if (passing == total && total > 0L) 'pass' else 'fail'
 
-          tap_lines <- rbind(tap_lines_universal,tap_lines_lab)
+          tap_lines <- c(tap_lines_universal, tap_lines_lab)
 
           
           rows <- character(0)
