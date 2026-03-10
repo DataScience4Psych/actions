@@ -260,21 +260,28 @@ jobs:
             message('No student Rmd found; tests will run without student environment.')
           }
           source(file.path('${test_path}', '..', '..', 'shared-helper-load.R'), local = FALSE)
-          tap_lines <- capture.output(
-            result <- c(
-            testthat::test_file(file.path('${test_path}', '..', '..', 'test-universal-rmd-code.R'), reporter = 'tap',
-                                         stop_on_failure = FALSE,
-            testthat::test_dir('${test_path}', reporter = 'tap',
-                                         stop_on_failure = FALSE)),
+
+           tap_lines_universal <- capture.output(
+            result_universal <- testthat::test_file(file.path('${test_path}', '..', '..', 'test-universal-rmd-code.R'), reporter = 'tap',
+                                         stop_on_failure = FALSE),
+            type = 'output'
+          )
+          
+          tap_lines_lab <- capture.output(
+            result_lab <-  testthat::test_dir('${test_path}', reporter = 'tap',
+                                         stop_on_failure = FALSE),
             type = 'output'
           )
 
-          df      <- as.data.frame(result)
+          df      <- as.data.frame(rbind(result_universal,result_lab))
           passing <- sum(df\$passed)
           total   <- passing + sum(df\$failed) + sum(df\$error)
           score   <- if (total > 0L) as.integer(round(passing / total * 100)) else 0L
           status  <- if (passing == total && total > 0L) 'pass' else 'fail'
 
+          tap_lines <- rbind(tap_lines_universal,tap_lines_lab)
+
+          
           rows <- character(0)
           i <- 1L
           while (i <= length(tap_lines)) {
