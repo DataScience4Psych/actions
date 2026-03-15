@@ -44,7 +44,7 @@ concurrency:
 jobs:
   grade:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # On issue open: always run (except bots).
     # On comment: only run if the comment body is exactly /grade or /regrade.
     # On workflow_call: always run (caller decides when to invoke).
