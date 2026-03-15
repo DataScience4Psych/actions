@@ -212,9 +212,10 @@ jobs:
 
     # Run tests with student code as working directory so relative file paths
     # inside test files resolve correctly.
-    # Student .R files (including subfolders) are sourced first, then the Rmd
-    # is purled+sourced into .GlobalEnv so all objects the tests reference
-    # (variables, functions, plots) are available.
+    # Student Rmd is purled+sourced into .GlobalEnv first so all objects the
+    # tests reference (variables, functions, plots) are available.
+    # .R files from subfolders are read (not sourced) into .r_script_content
+    # so tests can check code patterns in them.
     # Proportional score = passing_expectations / total * 100.
     - name: Run autograding tests
       id: run-tests
@@ -229,24 +230,6 @@ jobs:
           # Source student Rmd into .GlobalEnv so test assertions can see objects.
           # Use STUDENT_CODE_DIR so this works regardless of testthat's cwd.
           student_dir <- Sys.getenv('STUDENT_CODE_DIR', unset = '.')
-
-          # Source .R files (including subfolders) first
-          r_files <- list.files(student_dir, pattern = '\\\\.R$', ignore.case = TRUE,
-                                recursive = TRUE, full.names = TRUE)
-          r_files <- r_files[!grepl('(template|solution|example)', basename(r_files), ignore.case = TRUE)]
-          for (rf in r_files) {
-            r_err <- tryCatch(
-              { source(rf, local = FALSE); NULL },
-              error = function(e) e
-            )
-            if (!is.null(r_err)) {
-              cat(paste0(rf, ': ', conditionMessage(r_err), '\n'),
-                  file = '/tmp/code_error.txt', append = TRUE)
-              message('Error sourcing ', rf, ' (grading continues): ', conditionMessage(r_err))
-            }
-          }
-
-          # Then purl and source Rmd files
           rmd <- list.files(student_dir, pattern = '\\\\.Rmd$', ignore.case = TRUE,
                             recursive = TRUE, full.names = TRUE)
           rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
@@ -258,15 +241,31 @@ jobs:
               error = function(e) e
             )
             if (!is.null(code_err)) {
-              cat(paste0(conditionMessage(code_err), '\n'),
-                  file = '/tmp/code_error.txt', append = TRUE)
+              writeLines(conditionMessage(code_err), '/tmp/code_error.txt')
               message('Student code error (grading continues): ', conditionMessage(code_err))
             }
-          } else if (length(r_files) == 0) {
-            message('No student Rmd or R files found; tests will run without student environment.')
+          } else {
+            message('No student Rmd found; tests will run without student environment.')
           }
           shared_test_dir <- normalizePath(file.path('${test_path}', '..', '..'), mustWork = FALSE)
           source(file.path(shared_test_dir, 'shared-helper-load.R'), local = FALSE)
+
+          # Read .R files from subfolders into .r_script_content so tests
+          # can check code patterns in R scripts separately from Rmd content.
+          .r_script_files <- list.files(student_dir, pattern = '\\\\.R$',
+                                        ignore.case = TRUE, recursive = TRUE,
+                                        full.names = TRUE)
+          .r_script_files <- .r_script_files[!grepl('(template|solution|example)',
+                                                     basename(.r_script_files),
+                                                     ignore.case = TRUE)]
+          .r_script_content <- if (length(.r_script_files) > 0) {
+            message('Loaded content from ', length(.r_script_files), ' .R file(s) into .r_script_content')
+            unlist(lapply(.r_script_files, function(f) {
+              tryCatch(readLines(f, warn = FALSE), error = function(e) character(0))
+            }))
+          } else {
+            character(0)
+          }
 
           universal_test_file <- file.path(shared_test_dir, 'test-universal-rmd-code.R')
           result_universal <- NULL
