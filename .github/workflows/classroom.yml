@@ -339,7 +339,9 @@ jobs:
         if [ -f /tmp/code_error.txt ]; then
           echo "CODE_FAILED=true" >> $GITHUB_ENV
         fi
-
+    # Try to source the student's Rmd and warn if it fails.
+    # Does NOT stop grading — formative feedback should show as many
+    # test results as possible even when code has errors.
     - name: Warn about code errors
       if: env.CODE_FAILED == 'true'
       run: |
