@@ -240,6 +240,25 @@ jobs:
           } else {
             message('No student Rmd found; tests will run without student environment.')
           }
+          # Read .R files from subfolders into .r_script_content so tests
+          # can check code patterns in R scripts separately from Rmd content.
+          .r_script_files <- list.files(student_dir, pattern = '\\\\.R$',
+                                        ignore.case = TRUE, recursive = TRUE,
+                                        full.names = TRUE)
+          .r_script_files <- .r_script_files[!grepl('(template|solution|example)',
+                                                     basename(.r_script_files),
+                                                     ignore.case = TRUE)]
+          .r_script_content <- if (length(.r_script_files) > 0) {
+            message('Loaded content from ', length(.r_script_files), ' .R file(s) into .r_script_content')
+            unlist(lapply(.r_script_files, function(f) {
+              tryCatch(readLines(f, warn = FALSE), error = function(e) character(0))
+            }))
+          } else {
+            character(0)
+          }
+
+
+          
           shared_test_dir <- normalizePath(file.path('${test_path}', '..', '..'), mustWork = FALSE)
           source(file.path(shared_test_dir, 'shared-helper-load.R'), local = FALSE)
 
