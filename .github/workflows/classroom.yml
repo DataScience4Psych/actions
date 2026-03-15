@@ -35,9 +35,16 @@ permissions:
   issues: write
   contents: read
 
+# Cancel earlier in-progress runs when a new grading request arrives for the
+# same issue, so only the latest attempt consumes runner minutes.
+concurrency:
+  group: ${{ github.repository }}-grade-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   grade:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # On issue open: always run (except bots).
     # On comment: only run if the comment body is exactly /grade or /regrade.
     # On workflow_call: always run (caller decides when to invoke).
@@ -140,6 +147,7 @@ jobs:
       with:
         repository: DataScience4Psych/DataScience4Psych
         path: autograding
+        sparse-checkout: tests
 
     - name: Verify lab test directory exists
       run: |
@@ -197,35 +205,6 @@ jobs:
           }
         "
 
-    # Try to source the student's Rmd and warn if it fails.
-    # Does NOT stop grading — formative feedback should show as many
-    # test results as possible even when code has errors.
-    - name: Check student code runs
-      id: check-code
-      working-directory: student-code
-      run: |
-        Rscript --vanilla -e "
-          rmd <- list.files('.', pattern = '\\\\.Rmd$', ignore.case = TRUE,
-                            recursive = FALSE, full.names = TRUE)
-        #  rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
-          if (length(rmd) == 0) stop('No student .Rmd file found')
-          r_script <- tempfile(fileext = '.R')
-          knitr::purl(rmd[1], output = r_script, quiet = TRUE)
-          err <- tryCatch({ source(r_script, local = FALSE); NULL }, error = function(e) e)
-          if (!is.null(err)) {
-            writeLines(conditionMessage(err), '/tmp/code_error.txt')
-            stop(conditionMessage(err))
-          }
-        " 2>/tmp/code_error_full.txt || echo "CODE_FAILED=true" >> $GITHUB_ENV
-
-    - name: Warn about code errors
-      if: env.CODE_FAILED == 'true'
-      run: |
-        err=$(cat /tmp/code_error.txt 2>/dev/null || cat /tmp/code_error_full.txt | tail -5)
-        gh issue comment ${{ github.event.issue.number }} \
-          --body ":exploding_head: **Your code had errors when sourced** — some tests below may fail as a result. Fix these before resubmitting:\`\`\`${err}\`\`\`Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for full details." \
-          --repo ${{ github.repository }}
-
     # Run tests with student code as working directory so relative file paths
     # inside test files resolve correctly.
     # Student Rmd is purled+sourced into .GlobalEnv first so all objects the
@@ -250,10 +229,14 @@ jobs:
           if (length(rmd) > 0) {
             r_script <- tempfile(fileext = '.R')
             knitr::purl(rmd[1], output = r_script, quiet = TRUE)
-            tryCatch(
-              source(r_script, local = FALSE),
-              error = function(e) message('Student code error (grading continues): ', conditionMessage(e))
+            code_err <- tryCatch(
+              { source(r_script, local = FALSE); NULL },
+              error = function(e) e
             )
+            if (!is.null(code_err)) {
+              writeLines(conditionMessage(code_err), '/tmp/code_error.txt')
+              message('Student code error (grading continues): ', conditionMessage(code_err))
+            }
           } else {
             message('No student Rmd found; tests will run without student environment.')
           }
@@ -353,6 +336,19 @@ jobs:
         if [ ! -f /tmp/test_metrics.txt ]; then
           echo "::error::Tests failed to run (R error before metrics were written)"
         fi
+        if [ -f /tmp/code_error.txt ]; then
+          echo "CODE_FAILED=true" >> $GITHUB_ENV
+        fi
+    # Try to source the student's Rmd and warn if it fails.
+    # Does NOT stop grading — formative feedback should show as many
+    # test results as possible even when code has errors.
+    - name: Warn about code errors
+      if: env.CODE_FAILED == 'true'
+      run: |
+        err=$(cat /tmp/code_error.txt 2>/dev/null || echo "Unknown error")
+        gh issue comment ${{ github.event.issue.number }} \
+          --body ":exploding_head: **Your code had errors when sourced** — some tests below may fail as a result. Fix these before resubmitting:\`\`\`${err}\`\`\`Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for full details." \
+          --repo ${{ github.repository }}
 
     - name: Post grading results
       if: always()
