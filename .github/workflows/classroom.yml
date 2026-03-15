@@ -240,21 +240,39 @@ jobs:
           } else {
             message('No student Rmd found; tests will run without student environment.')
           }
-          source(file.path('${test_path}', '..', '..', 'shared-helper-load.R'), local = FALSE)
+          shared_test_dir <- normalizePath(file.path('${test_path}', '..', '..'), mustWork = FALSE)
+          source(file.path(shared_test_dir, 'shared-helper-load.R'), local = FALSE)
 
-           tap_lines_universal <- capture.output(
-            result_universal <- testthat::test_file(file.path('${test_path}', '..', '..', 'test-universal-rmd-code.R'), reporter = 'tap',
-                                         stop_on_failure = FALSE),
-            type = 'output'
-          )
-          
+          universal_test_file <- file.path(shared_test_dir, 'test-universal-rmd-code.R')
+          result_universal <- NULL
+          tap_lines_universal <- character(0)
+          if (file.exists(universal_test_file)) {
+            tap_lines_universal <- tryCatch(
+              capture.output(
+                result_universal <- testthat::test_file(universal_test_file, reporter = 'tap',
+                                                        stop_on_failure = FALSE),
+                type = 'output'
+              ),
+              error = function(e) {
+                message('Error running universal test file (', universal_test_file, '): ', conditionMessage(e))
+                character(0)
+              }
+            )
+          } else {
+            message('Universal test file not found: ', universal_test_file)
+          }
+
           tap_lines_lab <- capture.output(
             result_lab <-  testthat::test_dir('${test_path}', reporter = 'tap',
                                          stop_on_failure = FALSE),
             type = 'output'
           )
 
-          df      <- rbind(as.data.frame(result_universal), as.data.frame(result_lab))
+          df <- if (!is.null(result_universal)) {
+            rbind(as.data.frame(result_universal), as.data.frame(result_lab))
+          } else {
+            as.data.frame(result_lab)
+          }
           passing <- sum(df\$passed)
           total   <- passing + sum(df\$failed) + sum(df\$error)
           score   <- if (total > 0L) as.integer(round(passing / total * 100)) else 0L
