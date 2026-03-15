@@ -177,17 +177,22 @@ jobs:
           any::knitr
           any::pak
 
-    # Scan the student's Rmd for library()/require() calls and install any
-    # packages not already available, so labs with different dependencies work.
+    # Scan the student's Rmd and R files for library()/require() calls and
+    # install any packages not already available, so labs with different
+    # dependencies work.
     - name: Install student package dependencies
       working-directory: student-code
       run: |
         Rscript --vanilla -e "
           rmd <- list.files('.', pattern = '\\\\.Rmd$', ignore.case = TRUE,
-                            recursive = FALSE, full.names = TRUE)
+                            recursive = TRUE, full.names = TRUE)
           rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
-          if (length(rmd) == 0) quit(status = 0)
-          txt <- readLines(rmd[1], warn = FALSE)
+          r_files <- list.files('.', pattern = '\\\\.R$', ignore.case = TRUE,
+                                recursive = TRUE, full.names = TRUE)
+          r_files <- r_files[!grepl('(template|solution|example)', basename(r_files), ignore.case = TRUE)]
+          all_files <- c(rmd, r_files)
+          if (length(all_files) == 0) quit(status = 0)
+          txt <- unlist(lapply(all_files, readLines, warn = FALSE))
           pkgs <- regmatches(txt, gregexpr('(?<=library\\\\(|require\\\\()([A-Za-z0-9_.]+)', txt, perl = TRUE))
           pkgs <- unique(unlist(pkgs))
           pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -207,8 +212,9 @@ jobs:
 
     # Run tests with student code as working directory so relative file paths
     # inside test files resolve correctly.
-    # Student Rmd is purled+sourced into .GlobalEnv first so all objects the
-    # tests reference (variables, functions, plots) are available.
+    # Student .R files (including subfolders) are sourced first, then the Rmd
+    # is purled+sourced into .GlobalEnv so all objects the tests reference
+    # (variables, functions, plots) are available.
     # Proportional score = passing_expectations / total * 100.
     - name: Run autograding tests
       id: run-tests
@@ -223,8 +229,26 @@ jobs:
           # Source student Rmd into .GlobalEnv so test assertions can see objects.
           # Use STUDENT_CODE_DIR so this works regardless of testthat's cwd.
           student_dir <- Sys.getenv('STUDENT_CODE_DIR', unset = '.')
+
+          # Source .R files (including subfolders) first
+          r_files <- list.files(student_dir, pattern = '\\\\.R$', ignore.case = TRUE,
+                                recursive = TRUE, full.names = TRUE)
+          r_files <- r_files[!grepl('(template|solution|example)', basename(r_files), ignore.case = TRUE)]
+          for (rf in r_files) {
+            r_err <- tryCatch(
+              { source(rf, local = FALSE); NULL },
+              error = function(e) e
+            )
+            if (!is.null(r_err)) {
+              cat(paste0(rf, ': ', conditionMessage(r_err), '\n'),
+                  file = '/tmp/code_error.txt', append = TRUE)
+              message('Error sourcing ', rf, ' (grading continues): ', conditionMessage(r_err))
+            }
+          }
+
+          # Then purl and source Rmd files
           rmd <- list.files(student_dir, pattern = '\\\\.Rmd$', ignore.case = TRUE,
-                            recursive = FALSE, full.names = TRUE)
+                            recursive = TRUE, full.names = TRUE)
           rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
           if (length(rmd) > 0) {
             r_script <- tempfile(fileext = '.R')
@@ -234,11 +258,12 @@ jobs:
               error = function(e) e
             )
             if (!is.null(code_err)) {
-              writeLines(conditionMessage(code_err), '/tmp/code_error.txt')
+              cat(paste0(conditionMessage(code_err), '\n'),
+                  file = '/tmp/code_error.txt', append = TRUE)
               message('Student code error (grading continues): ', conditionMessage(code_err))
             }
-          } else {
-            message('No student Rmd found; tests will run without student environment.')
+          } else if (length(r_files) == 0) {
+            message('No student Rmd or R files found; tests will run without student environment.')
           }
           shared_test_dir <- normalizePath(file.path('${test_path}', '..', '..'), mustWork = FALSE)
           source(file.path(shared_test_dir, 'shared-helper-load.R'), local = FALSE)
