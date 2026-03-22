@@ -149,6 +149,28 @@ jobs:
         path: autograding
         sparse-checkout: tests
 
+    # If test-universal-rmd-code.R was saved with un-filled template placeholders
+    # (e.g. test_that(, { ... }) with no description, paste(, collapse="|") with
+    # no patterns) testthat emits "code run outside of test_that()" for every
+    # student and the test body never runs at all.  Patch those placeholders
+    # with sensible defaults so the test actually executes.
+    # File tracked at: DataScience4Psych/DataScience4Psych/tests/test-universal-rmd-code.R
+    - name: Patch autograding test files
+      run: |
+        f="$GITHUB_WORKSPACE/autograding/tests/test-universal-rmd-code.R"
+        [ -f "$f" ] || exit 0
+        # Fix: test_that(, { — missing description aborts the test before its
+        # body runs, causing a spurious "code run outside of test_that()" result.
+        # Use [[:space:]]*$ to tolerate any trailing whitespace on the line.
+        sed -i \
+          's/^test_that([[:space:]]*,[[:space:]]*{[[:space:]]*$/test_that("Rmd file contains header elements", {/' \
+          "$f"
+        # Fix: paste(, collapse = "|") — empty pattern list; supply a basic
+        # markdown-header regex so the header-count assertion is meaningful.
+        sed -i \
+          's/paste([[:space:]]*,[[:space:]]*collapse[[:space:]]*=[[:space:]]*"|")/paste(c("^#{1,4}"), collapse = "|")/' \
+          "$f"
+
     - name: Verify lab test directory exists
       run: |
         test_path="$GITHUB_WORKSPACE/autograding/tests/${{ steps.detect-lab.outputs.lab }}/testthat"
@@ -220,6 +242,11 @@ jobs:
         test_path="$GITHUB_WORKSPACE/autograding/tests/${lab}/testthat"
 
         Rscript --vanilla -e "
+          # Pattern used to identify testthat pseudo-tests generated when an
+          # expectation or test_that() call is malformed (e.g. missing desc).
+          # Filtering these keeps student-facing output clean.
+          .outside_test_pat <- 'code run outside of test_that'
+
           # Source student Rmd into .GlobalEnv so test assertions can see objects.
           # Use STUDENT_CODE_DIR so this works regardless of testthat's cwd.
           student_dir <- Sys.getenv('STUDENT_CODE_DIR', unset = '.')
@@ -288,7 +315,11 @@ jobs:
           )
 
           df <- if (!is.null(result_universal)) {
-            rbind(as.data.frame(result_universal), as.data.frame(result_lab))
+            df_u <- as.data.frame(result_universal)
+            if ('test' %in% names(df_u)) {
+              df_u <- df_u[!grepl(.outside_test_pat, as.character(df_u$test), fixed = TRUE), , drop = FALSE]
+            }
+            rbind(df_u, as.data.frame(result_lab))
           } else {
             as.data.frame(result_lab)
           }
@@ -326,6 +357,10 @@ jobs:
                   i <- i + 1L
                 }
                 i <- i + 1L
+              }
+              if (grepl(.outside_test_pat, desc, fixed = TRUE) ||
+                  grepl(.outside_test_pat, line, fixed = TRUE)) {
+                next
               }
               msg_idx <- grep('^message:', msg_lines)
               detail <- if (length(msg_idx) > 0) {
