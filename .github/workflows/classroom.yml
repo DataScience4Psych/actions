@@ -381,20 +381,25 @@ jobs:
               if (i <= length(tap_lines) && trimws(tap_lines[i]) == '---') {
                 i <- i + 1L
                 while (i <= length(tap_lines) && trimws(tap_lines[i]) != '...') {
-                  msg_lines <- c(msg_lines, trimws(tap_lines[i]))
+                  msg_lines <- c(msg_lines, tap_lines[i])
                   i <- i + 1L
                 }
                 i <- i + 1L
               }
-              msg_idx <- grep('^message:', msg_lines)
+              msg_idx <- grep('^[[:space:]]*message:', msg_lines)
               detail <- if (length(msg_idx) > 0) {
-                raw <- sub('^message:[[:space:]]*', '', msg_lines[msg_idx[1]])
+                raw <- sub('^[[:space:]]*message:[[:space:]]*', '', msg_lines[msg_idx[1]])
+                raw <- sub('^[|>][-+]?[0-9]?[[:space:]]*$', '', raw)
+                msg_indent <- nchar(regmatches(msg_lines[msg_idx[1]],
+                                               regexpr('^[[:space:]]*', msg_lines[msg_idx[1]])))
                 j <- msg_idx[1] + 1L
-                while (j <= length(msg_lines) && grepl('^  ', msg_lines[j])) {
+                while (j <= length(msg_lines) &&
+                       nchar(regmatches(msg_lines[j],
+                                        regexpr('^[[:space:]]*', msg_lines[j]))) > msg_indent) {
                   raw <- paste0(raw, ' ', trimws(msg_lines[j]))
                   j <- j + 1L
                 }
-                raw
+                trimws(raw)
               } else ''
               rows <- c(rows, paste0('| ',unsuccess_symbol,' | ', desc, ' | ', detail, ' |'))
             } else {
