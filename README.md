@@ -2,6 +2,46 @@
 
 
 
+## Auto-Comment Workflow
+
+The [`auto-comment.yml`](.github/workflows/auto-comment.yml) workflow posts a redirect comment on newly-opened issues, telling students to transfer the issue to the correct lab submission repo.  
+Lab repos follow the naming convention `YEAR-lab_NN` (e.g. `DataScience4Psych/2026-lab_10`).
+
+### Quickstart
+
+Add a thin caller workflow to your lab repo (e.g. `.github/workflows/auto-comment.yml`):
+
+```yaml
+name: Auto Comment
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  comment:
+    uses: DataScience4Psych/actions/.github/workflows/auto-comment.yml@main
+    with:
+      lab_number: '10'   # replace with the actual lab number
+    secrets: inherit
+```
+
+#### Omitting `lab_number`
+
+If you omit `lab_number`, the workflow auto-detects the number from the repo name (e.g. `2026-lab_10` → `10`):
+
+```yaml
+jobs:
+  comment:
+    uses: DataScience4Psych/actions/.github/workflows/auto-comment.yml@main
+    secrets: inherit
+```
+
+The generated comment will include a link to
+`https://github.com/DataScience4Psych/YEAR-lab_NN/issues`, where `YEAR` is
+the current calendar year and `NN` is the zero-padded lab number.
+
+---
+
 ## Using the Grading Workflow in Other Repos
 
 The [`classroom.yml`](.github/workflows/classroom.yml) grading workflow is published as a **reusable GitHub Actions workflow**.  
