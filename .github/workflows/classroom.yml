@@ -389,24 +389,18 @@ jobs:
               msg_idx <- grep('^[[:space:]]*message:', msg_lines)
               detail <- if (length(msg_idx) > 0) {
                 raw <- sub('^[[:space:]]*message:[[:space:]]*', '', msg_lines[msg_idx[1]])
-                if (grepl('^\\|', trimws(raw))) {
-                  raw <- ''
-                  j <- msg_idx[1] + 1L
-                  while (j <= length(msg_lines) &&
-                         !grepl('^  [^[:space:]]', msg_lines[j])) {
-                    content <- trimws(msg_lines[j])
-                    if (nchar(content) > 0) {
-                      raw <- if (nchar(raw) == 0) content else paste0(raw, ' ', content)
-                    }
-                    j <- j + 1L
+                raw <- sub('^[|>][-+]?[0-9]?[[:space:]]*$', '', raw)
+                msg_indent <- nchar(regmatches(msg_lines[msg_idx[1]],
+                                               regexpr('^[[:space:]]*', msg_lines[msg_idx[1]])))
+                j <- msg_idx[1] + 1L
+                while (j <= length(msg_lines) &&
+                       nchar(regmatches(msg_lines[j],
+                                        regexpr('^[[:space:]]*', msg_lines[j]))) > msg_indent) {
+                  content <- trimws(msg_lines[j])
+                  if (nchar(content) > 0) {
+                    raw <- if (nchar(raw) == 0) content else paste0(raw, ' ', content)
                   }
-                } else {
-                  j <- msg_idx[1] + 1L
-                  while (j <= length(msg_lines) &&
-                         !grepl('^  [^[:space:]]', msg_lines[j])) {
-                    raw <- paste0(raw, ' ', trimws(msg_lines[j]))
-                    j <- j + 1L
-                  }
+                  j <- j + 1L
                 }
                 raw
               } else ''
