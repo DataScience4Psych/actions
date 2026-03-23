@@ -381,32 +381,18 @@ jobs:
               if (i <= length(tap_lines) && trimws(tap_lines[i]) == '---') {
                 i <- i + 1L
                 while (i <= length(tap_lines) && trimws(tap_lines[i]) != '...') {
-                  msg_lines <- c(msg_lines, tap_lines[i])
+                  msg_lines <- c(msg_lines, trimws(tap_lines[i]))
                   i <- i + 1L
                 }
                 i <- i + 1L
               }
-              msg_idx <- grep('^[[:space:]]*message:', msg_lines)
+              msg_idx <- grep('^message:', msg_lines)
               detail <- if (length(msg_idx) > 0) {
-                raw <- sub('^[[:space:]]*message:[[:space:]]*', '', msg_lines[msg_idx[1]])
-                if (grepl('^\\|', trimws(raw))) {
-                  raw <- ''
-                  j <- msg_idx[1] + 1L
-                  while (j <= length(msg_lines) &&
-                         !grepl('^  [^[:space:]]', msg_lines[j])) {
-                    content <- trimws(msg_lines[j])
-                    if (nchar(content) > 0) {
-                      raw <- if (nchar(raw) == 0) content else paste0(raw, ' ', content)
-                    }
-                    j <- j + 1L
-                  }
-                } else {
-                  j <- msg_idx[1] + 1L
-                  while (j <= length(msg_lines) &&
-                         !grepl('^  [^[:space:]]', msg_lines[j])) {
-                    raw <- paste0(raw, ' ', trimws(msg_lines[j]))
-                    j <- j + 1L
-                  }
+                raw <- sub('^message:[[:space:]]*', '', msg_lines[msg_idx[1]])
+                j <- msg_idx[1] + 1L
+                while (j <= length(msg_lines) && grepl('^  ', msg_lines[j])) {
+                  raw <- paste0(raw, ' ', trimws(msg_lines[j]))
+                  j <- j + 1L
                 }
                 raw
               } else ''
