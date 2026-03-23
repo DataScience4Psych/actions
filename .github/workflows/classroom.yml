@@ -396,10 +396,13 @@ jobs:
                 while (j <= length(msg_lines) &&
                        nchar(regmatches(msg_lines[j],
                                         regexpr('^[[:space:]]*', msg_lines[j]))) > msg_indent) {
-                  raw <- paste0(raw, ' ', trimws(msg_lines[j]))
+                  content <- trimws(msg_lines[j])
+                  if (nchar(content) > 0) {
+                    raw <- if (nchar(raw) == 0) content else paste0(raw, ' ', content)
+                  }
                   j <- j + 1L
                 }
-                trimws(raw)
+                raw
               } else ''
               rows <- c(rows, paste0('| ',unsuccess_symbol,' | ', desc, ' | ', detail, ' |'))
             } else {
