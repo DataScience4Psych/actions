@@ -22,10 +22,22 @@ name: Grade Submission
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   workflow_call:
+    inputs:
+      lab:
+        description: 'Override which lab to grade (e.g. lab02). Leave blank for auto-detection.'
+        required: false
+        type: string
+        default: ''
     secrets:
       GRADING_PAT:
         required: false
   workflow_dispatch:
+    inputs:
+      lab:
+        description: 'Override which lab to grade (e.g. lab02). Leave blank for auto-detection.'
+        required: false
+        type: string
+        default: ''
   issues:
     types: [opened]
   issue_comment:
@@ -92,10 +104,16 @@ jobs:
         echo "Student repo: $repo_path"
 
     # Detect which lab to grade.
-    # Primary:  student's repo name, e.g. "lab-02-plastic-waste" -> "lab02"
-    # Fallback: submission repo name, e.g. "2026-lab_02"          -> "lab02"
+    # Priority 1: explicit override via workflow input (inputs.lab)
+    # Priority 2: lab identifier in comment body, e.g. "/grade lab02"
+    # Priority 3: lab identifier in issue body, e.g. a line "lab: lab02"
+    # Priority 4: student's repo name, e.g. "lab-02-plastic-waste" -> "lab02"
+    # Fallback:   submission repo name, e.g. "2026-lab_02"          -> "lab02"
     - name: Detect lab
       id: detect-lab
+      env:
+        COMMENT_BODY: ${{ github.event.comment.body }}
+        ISSUE_BODY: ${{ github.event.issue.body }}
       run: |
         normalize_lab() {
           raw="$1"
@@ -104,6 +122,47 @@ jobs:
             printf 'lab%02d\n' "$((10#$num))"
           fi
         }
+
+        # ── Priority 1: explicit override via workflow input ──────────────────
+        input_lab="${{ inputs.lab }}"
+        if [ -n "$input_lab" ]; then
+          lab=$(normalize_lab "$input_lab")
+          lab="${lab:-$input_lab}"
+          echo "Lab overridden by workflow input: $lab"
+          echo "lab=$lab" >> $GITHUB_OUTPUT
+          echo "Detected lab: $lab"
+          exit 0
+        fi
+
+        # ── Priority 2: lab override in comment body ("/grade lab02" etc.) ────
+        if [ -n "$COMMENT_BODY" ]; then
+          comment_override=$(echo "$COMMENT_BODY" | head -1 | grep -oiP 'labs?[_-]?\d+' | head -1)
+          if [ -n "$comment_override" ]; then
+            lab=$(normalize_lab "$comment_override")
+            if [ -n "$lab" ]; then
+              echo "Lab overridden by comment body: $lab"
+              echo "lab=$lab" >> $GITHUB_OUTPUT
+              echo "Detected lab: $lab"
+              exit 0
+            fi
+          fi
+        fi
+
+        # ── Priority 3: lab override in issue body ("lab: lab02") ─────────────
+        if [ -n "$ISSUE_BODY" ]; then
+          body_override=$(echo "$ISSUE_BODY" | grep -iP '^lab:' | grep -oiP 'labs?[_-]?\d+' | head -1)
+          if [ -n "$body_override" ]; then
+            lab=$(normalize_lab "$body_override")
+            if [ -n "$lab" ]; then
+              echo "Lab overridden by issue body: $lab"
+              echo "lab=$lab" >> $GITHUB_OUTPUT
+              echo "Detected lab: $lab"
+              exit 0
+            fi
+          fi
+        fi
+
+        # ── Priority 4: auto-detect from student's repo name ──────────────────
         student_repo=$(echo "${{ steps.extract.outputs.repo_path }}" | cut -d/ -f2)
         # Accept forms like:
         #   lab1, lab01, lab-1, lab_1, labs1, labs-01, etc.
@@ -112,7 +171,7 @@ jobs:
         if [ -n "$raw_lab" ]; then
           lab=$(normalize_lab "$raw_lab")
         fi
-        
+
         if [ -z "$lab" ]; then
           # Fallback: use the submission repo name
           submission_repo="${{ github.event.repository.name }}"
