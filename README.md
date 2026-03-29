@@ -83,6 +83,7 @@ Post a comment on the grading issue with the lab identifier directly after `/gra
 
 ```
 /grade lab02
+/feedback lab02
 /regrade lab-02
 ```
 
