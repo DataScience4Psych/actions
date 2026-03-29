@@ -67,7 +67,9 @@ jobs:
         github.event_name == 'issues' ||
         (github.event_name == 'issue_comment' && (
           startsWith(github.event.comment.body, '/grade') ||
-          startsWith(github.event.comment.body, '/regrade')
+          startsWith(github.event.comment.body, '/regrade') ||
+          startsWith(github.event.comment.body, '/feedback') ||
+          startsWith(github.event.comment.body, '/update')
         ))
       )
     env:
