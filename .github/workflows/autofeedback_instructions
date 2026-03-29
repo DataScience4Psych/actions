@@ -15,27 +15,11 @@ name: Auto Comment on Issue Open
 #       types: [opened]
 #   jobs:
 #     comment:
-#       uses: DataScience4Psych/actions/.github/workflows/auto-comment.yml@main
-#       with:
-#         lab_number: '10'      # optional — auto-detected from repo name if omitted
+#       uses: DataScience4Psych/actions/.github/workflows/autofeedback_instructions.yml@main
 #       secrets: inherit
 #
 # ─────────────────────────────────────────────────────────────────────────────
 on:
-  workflow_call:
-    inputs:
-      lab_number:
-        description: 'Lab number (e.g. "10"). Leave blank to auto-detect from the repo name.'
-        required: false
-        type: string
-        default: ''
-  workflow_dispatch:
-    inputs:
-      lab_number:
-        description: 'Lab number (e.g. "10"). Leave blank to auto-detect from the repo name.'
-        required: false
-        type: string
-        default: ''
   issues:
     types: [opened]
 
@@ -48,56 +32,18 @@ jobs:
     # Skip bots (e.g. github-classroom[bot]) to avoid comment spam.
     if: github.actor != 'github-classroom[bot]'
     steps:
-      - name: Post redirect comment
+      - name: Post comment
         uses: actions/github-script@v7
-        env:
-          INPUT_LAB_NUMBER: ${{ inputs.lab_number }}
         with:
           script: |
-            // 1. Determine the lab number from input or from the repo name.
-            let labNum = (process.env.INPUT_LAB_NUMBER || '').trim();
-
-            if (!labNum) {
-              // Auto-detect from repo name.
-              // Accepts YEAR-lab_NN, lab-NN-title, labNN, etc.
-              const repoName = context.repo.repo;
-              const match = repoName.match(/lab[_-]?(\d+)/i);
-              if (match) {
-                labNum = match[1];
-              }
-            }
-
-            if (!labNum) {
-              core.setFailed(
-                'Could not determine the lab number. ' +
-                'Pass it explicitly via the lab_number input or name the repo following ' +
-                'the YEAR-lab_NN convention.'
-              );
-              return;
-            }
-
-            // Validate that labNum is a non-negative integer.
-            const labNumInt = parseInt(labNum, 10);
-            if (!Number.isInteger(labNumInt) || labNumInt < 0) {
-              core.setFailed(`Invalid lab_number "${labNum}": must be a non-negative integer.`);
-              return;
-            }
-
-            // 2. Build the transfer URL using the current calendar year (UTC).
-            const year = new Date().getUTCFullYear();
-            const paddedNum = String(labNumInt).padStart(2, '0');
-            const labRepo  = `${year}-lab_${paddedNum}`;
-            const owner    = context.repo.owner;
-            const transferUrl = `https://github.com/${owner}/${labRepo}/issues`;
-
             // 3. Compose and post the comment.
             const author = context.payload.issue.user.login;
             const body = [
               `👋 @${author}`,
-              `Thank you for raising an issue. If you are trying to submit a lab, ` +
-              `you should transfer this issue to [${labRepo}](${transferUrl}). ` +
-              `Otherwise, your lab won't be added to Prof. Mason's to-grade list. ` +
-              `Until then, no one will know that you're ready to receive feedback!`
+              `Thank you for submitting your lab to the right place! It's been added to Prof. Mason's to-grade list. Now she knows that you're ready to receive feedback!` +
+              `The autofeedbacker is intended to give you formative (and timely) feedback. It will post your results here shortly. You can see the [source code](https://github.com/DataScience4Psych/DataScience4Psych/tree/main/tests) for yourself. It's a work in progress, so please let me know when it makes mistakes. Once you get your feedback:` +
+              `            1. Update your code in your lab repo` +
+              `            2. Come back to this issue and comment `/feedback` to run the autofeedbacker again`
             ].join('\n');
 
             await github.rest.issues.createComment({
