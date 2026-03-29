@@ -35,6 +35,6 @@ jobs:
             👋 @{{ author }}
             Thank you for submitting your lab to the right place! It's been added to Prof. Mason's to-grade list. Now she knows that you're ready to receive feedback!
 
-            The autofeedbacker is intended to give you formative (and timely) feedback. It will post your results here shortly. You can see the <a href="https://github.com/DataScience4Psych/DataScience4Psych/tree/main/tests">source code</a> for yourself. It's a work in progress, so please let me know when it makes mistakes. Once you get your feedback:
+            The autofeedbacker is intended to give you formative (and timely) feedback. It will post your results here shortly. You can see the [source code](https://github.com/DataScience4Psych/DataScience4Psych/tree/main/tests) for yourself. It's a work in progress, so please let me know when it makes mistakes. Once you get your feedback:
             1. Update your code in your lab repo
             2. Come back to this issue and comment `/feedback` to run the autofeedbacker again
