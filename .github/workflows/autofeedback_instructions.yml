@@ -1,12 +1,9 @@
 name: Auto Comment on Issue Open
-# This reusable workflow posts a redirect comment on newly-opened issues,
-# telling students to transfer the issue to the correct lab submission repo.
-#
-# Lab repos follow the naming convention: YEAR-lab_NN
-# (e.g. DataScience4Psych/2026-lab_10)
+# This reusable workflow posts a welcome comment on newly-opened issues,
+# telling students what to expect from the autofeedbacker.
 #
 # ── Reusable workflow ────────────────────────────────────────────────────────
-# Call from a lab repo's own workflow (or from classroom.yml) like this:
+# Call from a lab repo's own workflow like this:
 #
 #   # .github/workflows/auto-comment.yml  (in a lab repo, e.g. 2026-lab_10)
 #   name: Auto Comment
@@ -21,35 +18,23 @@ name: Auto Comment on Issue Open
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   workflow_call:
-  issues:
-    types: [opened]
 
 permissions:
   issues: write
 
 jobs:
-  comment:
+  run:
     runs-on: ubuntu-latest
     # Skip bots (e.g. github-classroom[bot]) to avoid comment spam.
     if: github.actor != 'github-classroom[bot]'
     steps:
-      - name: Post comment
-        uses: actions/github-script@v7
+      - uses: wow-actions/auto-comment@v1
         with:
-          script: |
-            // 3. Compose and post the comment.
-            const author = context.payload.issue.user.login;
-            const body = [
-              `👋 @${author}`,
-              `Thank you for submitting your lab to the right place! It's been added to Prof. Mason's to-grade list. Now she knows that you're ready to receive feedback!` +
-              `The autofeedbacker is intended to give you formative (and timely) feedback. It will post your results here shortly. You can see the [source code](https://github.com/DataScience4Psych/DataScience4Psych/tree/main/tests) for yourself. It's a work in progress, so please let me know when it makes mistakes. Once you get your feedback:` +
-              `            1. Update your code in your lab repo` +
-              `            2. Come back to this issue and comment `/feedback` to run the autofeedbacker again`
-            ].join('\n');
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          issuesOpened: |
+            👋 @{{ author }}
+            Thank you for submitting your lab to the right place! It's been added to Prof. Mason's to-grade list. Now she knows that you're ready to receive feedback!
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              issue_number: context.issue.number,
-              body
-            });
+            The autofeedbacker is intended to give you formative (and timely) feedback. It will post your results here shortly. You can see the <a href="https://github.com/DataScience4Psych/DataScience4Psych/tree/main/tests">source code</a> for yourself. It's a work in progress, so please let me know when it makes mistakes. Once you get your feedback:
+            1. Update your code in your lab repo
+            2. Come back to this issue and comment `/grade` to run the autofeedbacker again
