@@ -217,6 +217,45 @@ jobs:
         token: ${{ secrets.GRADING_PAT || github.token }}
         path: student-code
 
+    # Check that every locally-referenced image in the student's knitted md file
+    # is present in the repository.  Remote URLs (http/https/data:) are skipped.
+    # Missing images are written to /tmp/missing_images.txt for the results step.
+    - name: Check for missing images
+      working-directory: student-code
+      run: |
+        md=$(find . -maxdepth 1 -iname "*.md" | grep -iv 'template\|solution\|example' | head -1)
+        if [ -z "$md" ]; then
+          echo "No knitted md file found; skipping image check."
+          exit 0
+        fi
+        echo "Checking image references in: $md"
+
+        # Collect image paths from the knitted md:
+        #   1. Markdown syntax : ![alt](path)
+        #   2. HTML img tags   : <img src="path"> / <img src='path'>
+        {
+          grep -oP '!\[[^\]]*\]\(\K[^)]+' "$md" 2>/dev/null || true
+          grep -oP '<img[^>]+src="\K[^"]+' "$md" 2>/dev/null || true
+          grep -oP "<img[^>]+src='\K[^']+" "$md" 2>/dev/null || true
+        } | sort -u | while IFS= read -r img_path; do
+          # Skip remote URLs and data URIs
+          echo "$img_path" | grep -qiP '^https?://|^data:' && continue
+          # Strip surrounding whitespace
+          img_path=$(echo "$img_path" | xargs 2>/dev/null || echo "$img_path")
+          [ -z "$img_path" ] && continue
+          [ ! -f "$img_path" ] && echo "$img_path"
+        done > /tmp/missing_images.txt
+
+        if [ -s /tmp/missing_images.txt ]; then
+          echo "::warning::Missing images detected in student submission:"
+          while IFS= read -r f; do
+            echo "::warning::Missing image: $f"
+          done < /tmp/missing_images.txt
+        else
+          echo "All referenced images are present in the repository."
+          rm -f /tmp/missing_images.txt
+        fi
+
     # Tests live in DataScience4Psych/DataScience4Psych at tests/<lab>/testthat/
     - name: Checkout autograding tests
       uses: actions/checkout@v4
@@ -485,9 +524,20 @@ jobs:
             codeErrorWarning = `\n\n:exploding_head: **Your code had errors when sourced** — some tests below may fail as a result. Fix these before resubmitting:\`\`\`${err}\`\`\`Check the [workflow logs](${runUrl}) for full details.`;
           }
 
+          // Warn about image files referenced in the Rmd but missing from the repo.
+          let missingImagesWarning = '';
+          if (fs.existsSync('/tmp/missing_images.txt')) {
+            const imgs = fs.readFileSync('/tmp/missing_images.txt', 'utf8').trim();
+            if (imgs) {
+              const imgList = imgs.split('\n').map(i => `- \`${i}\``).join('\n');
+              missingImagesWarning = `\n\n:framed_picture: **Missing images detected** — the following image files are referenced in your knitted document but were not found in your repository. Make sure to commit and push them:\n${imgList}`;
+            }
+          }
+
           let body;
           if (fs.existsSync('/tmp/summary.md')) {
             body = fs.readFileSync('/tmp/summary.md', 'utf8').trim();
+            body += missingImagesWarning;
             body += codeErrorWarning;
             body += `\n\n[View full workflow run](${runUrl})`;
           } else {
