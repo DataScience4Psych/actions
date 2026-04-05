@@ -217,6 +217,53 @@ jobs:
         token: ${{ secrets.GRADING_PAT || github.token }}
         path: student-code
 
+    # Check that the student pushed a knitted output file (md or html) and that
+    # every locally-referenced image inside it is present in the repository.
+    # Remote URLs (http/https/data:) are skipped for the image check.
+    # Results are written to /tmp/missing_output.txt and /tmp/missing_images.txt
+    # so the Post grading results step can include them in the comment.
+    - name: Check for missing knitted output and images
+      working-directory: student-code
+      run: |
+        # ── 1. Check that a knitted output file exists ────────────────────────
+        knitted=$(find . -maxdepth 1 \( -iname "*.md" -o -iname "*.html" \) \
+          | grep -iv 'template\|solution\|example' | head -1)
+        if [ -z "$knitted" ]; then
+          echo "::warning::No knitted md or html file found in the student repo."
+          echo "missing" > /tmp/missing_output.txt
+          exit 0
+        fi
+        echo "Found knitted output: $knitted"
+
+        # ── 2. Scan it for locally-referenced images ──────────────────────────
+        echo "Checking image references in: $knitted"
+
+        # Collect image paths from:
+        #   1. Markdown syntax : ![alt](path)
+        #   2. HTML img tags   : <img src="path"> / <img src='path'>
+        {
+          grep -oP '!\[[^\]]*\]\(\K[^)]+' "$knitted" 2>/dev/null || true
+          grep -oP '<img[^>]+src="\K[^"]+' "$knitted" 2>/dev/null || true
+          grep -oP "<img[^>]+src='\K[^']+" "$knitted" 2>/dev/null || true
+        } | sort -u | while IFS= read -r img_path; do
+          # Skip remote URLs and data URIs
+          echo "$img_path" | grep -qiP '^https?://|^data:' && continue
+          # Strip surrounding whitespace
+          img_path=$(echo "$img_path" | xargs 2>/dev/null || echo "$img_path")
+          [ -z "$img_path" ] && continue
+          [ ! -f "$img_path" ] && echo "$img_path"
+        done > /tmp/missing_images.txt
+
+        if [ -s /tmp/missing_images.txt ]; then
+          echo "::warning::Missing images detected in student submission:"
+          while IFS= read -r f; do
+            echo "::warning::Missing image: $f"
+          done < /tmp/missing_images.txt
+        else
+          echo "All referenced images are present in the repository."
+          rm -f /tmp/missing_images.txt
+        fi
+
     # Tests live in DataScience4Psych/DataScience4Psych at tests/<lab>/testthat/
     - name: Checkout autograding tests
       uses: actions/checkout@v4
@@ -485,9 +532,27 @@ jobs:
             codeErrorWarning = `\n\n:exploding_head: **Your code had errors when sourced** — some tests below may fail as a result. Fix these before resubmitting:\`\`\`${err}\`\`\`Check the [workflow logs](${runUrl}) for full details.`;
           }
 
+          // Warn if the student did not push a knitted output file at all.
+          let missingOutputWarning = '';
+          if (fs.existsSync('/tmp/missing_output.txt')) {
+            missingOutputWarning = `\n\n:warning: **No knitted output file found** — your repository does not contain a \`.md\` or \`.html\` file. Make sure to knit your Rmd and commit the output before submitting.`;
+          }
+
+          // Warn about image files referenced in the Rmd but missing from the repo.
+          let missingImagesWarning = '';
+          if (fs.existsSync('/tmp/missing_images.txt')) {
+            const imgs = fs.readFileSync('/tmp/missing_images.txt', 'utf8').trim();
+            if (imgs) {
+              const imgList = imgs.split('\n').map(i => `- \`${i}\``).join('\n');
+              missingImagesWarning = `\n\n:framed_picture: **Missing images detected** — the following image files are referenced in your knitted document but were not found in your repository. Make sure to commit and push them:\n${imgList}`;
+            }
+          }
+
           let body;
           if (fs.existsSync('/tmp/summary.md')) {
             body = fs.readFileSync('/tmp/summary.md', 'utf8').trim();
+            body += missingOutputWarning;
+            body += missingImagesWarning;
             body += codeErrorWarning;
             body += `\n\n[View full workflow run](${runUrl})`;
           } else {
