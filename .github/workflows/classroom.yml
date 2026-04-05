@@ -337,7 +337,7 @@ jobs:
     # Student Rmd is purled+sourced into .GlobalEnv first so all objects the
     # tests reference (variables, functions, plots) are available.
     # Proportional score = passing_expectations / total * 100.
-    - name: Run autograding tests
+    - name: Run automatic tests
       id: run-tests
       working-directory: student-code
       env:
@@ -550,10 +550,11 @@ jobs:
 
           let body;
           if (fs.existsSync('/tmp/summary.md')) {
-            body = fs.readFileSync('/tmp/summary.md', 'utf8').trim();
-            body += missingOutputWarning;
-            body += missingImagesWarning;
+            body = '';
             body += codeErrorWarning;
+            body += missingOutputWarning;
+            body += fs.readFileSync('/tmp/summary.md', 'utf8').trim();
+            body += missingImagesWarning;
             body += `\n\n[View full workflow run](${runUrl})`;
           } else {
             body = `:x: Grading failed to run — check the [workflow logs](${runUrl}) for R errors.`;
