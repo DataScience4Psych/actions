@@ -304,8 +304,9 @@ jobs:
           any::knitr
           any::pak
 
-    # Scan the student's Rmd for library()/require() calls and install any
-    # packages not already available, so labs with different dependencies work.
+    # Scan the student's Rmd for library()/require() calls and PACKAGE:: usage
+    # and install any packages not already available, so labs with different
+    # dependencies work.
     - name: Install student package dependencies
       working-directory: student-code
       run: |
@@ -315,8 +316,9 @@ jobs:
           rmd <- rmd[!grepl('(template|solution|example)', basename(rmd), ignore.case = TRUE)]
           if (length(rmd) == 0) quit(status = 0)
           txt <- readLines(rmd[1], warn = FALSE)
-          pkgs <- regmatches(txt, gregexpr('(?<=library\\\\(|require\\\\()([A-Za-z0-9_.]+)', txt, perl = TRUE))
-          pkgs <- unique(unlist(pkgs))
+          pkgs1 <- regmatches(txt, gregexpr('(?<=library\\\\(|require\\\\()([A-Za-z0-9_.]+)', txt, perl = TRUE))
+          pkgs2 <- regmatches(txt, gregexpr('(?<!:)[A-Za-z0-9_.]+(?=:::?)', txt, perl = TRUE))
+          pkgs <- unique(c(unlist(pkgs1), unlist(pkgs2)))
           pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
           if('dsbox' %in% pkgs){
           pkgs[pkgs == 'dsbox'] <- 'tidyverse/dsbox'
